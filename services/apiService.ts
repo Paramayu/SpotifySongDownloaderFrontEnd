@@ -5,6 +5,8 @@ import type { SpotifyAPIResponse, SpotifySong } from '../types';
  * It handles fetching metadata from Spotify via our server and initiating downloads.
  */
 
+// The base URL for the backend API.
+const API_DOMAIN = 'http://localhost:3000';
 
 /**
  * Extracts the ID from a Spotify track or playlist URL.
@@ -48,8 +50,9 @@ export const fetchSpotifyData = async (url: string): Promise<SpotifyAPIResponse>
         throw new Error('Invalid Spotify URL. Please provide a valid track or playlist link.');
     }
 
-    console.log(`Fetching data from endpoint: ${endpoint}`);
-    const response = await fetch(endpoint);
+    const fullUrl = `${API_DOMAIN}${endpoint}`;
+    console.log(`Fetching data from endpoint: ${fullUrl}`);
+    const response = await fetch(fullUrl);
 
     if (!response.ok) {
         const errorBody = await response.text();
@@ -89,7 +92,7 @@ export const initiateSingleSongDownload = async (song: SpotifySong): Promise<{ l
         ]
     };
 
-    const response = await fetch('/api/download', {
+    const response = await fetch(`${API_DOMAIN}/api/download`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -128,7 +131,7 @@ export const initiatePlaylistDownload = async (songsToDownload: SpotifySong[]): 
     // A more advanced solution for production might involve websockets or a polling mechanism
     // to check the status of the download job, but for this implementation, we use a single,
     // long-lived HTTP request as it's simpler to implement on the frontend.
-    const response = await fetch('/api/download', {
+    const response = await fetch(`${API_DOMAIN}/api/download`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

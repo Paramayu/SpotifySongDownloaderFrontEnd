@@ -1,5 +1,6 @@
 import React from 'react';
-import type { SpotifySong } from '../types';
+import type { SpotifySong, DownloadStatus } from '../types';
+import { ProgressBar } from './ProgressBar';
 
 /**
  * Props for the SongCard component.
@@ -17,6 +18,8 @@ interface SongCardProps {
     isSelected?: boolean;
     /** Function to call when the checkbox is toggled. */
     onSelect?: (songId: string) => void;
+    /** The current download status of the song, if applicable. */
+    downloadStatus?: DownloadStatus;
 }
 
 /**
@@ -44,7 +47,7 @@ const DownloadIcon: React.FC = () => (
  * A component to display information about a single song. It has different styles
  * for a large "featured" view and a smaller list item view.
  */
-export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = false, isSelectable, isSelected, onSelect }) => {
+export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = false, isSelectable, isSelected, onSelect, downloadStatus }) => {
     // Find the best image URL to use, preferring one that is at least 300px wide.
     const imageUrl = song.img.find(i => i.width >= 300)?.url || song.img[0]?.url;
 
@@ -68,6 +71,7 @@ export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = 
                         onChange={() => onSelect?.(song.id)}
                         className="h-6 w-6 rounded bg-gray-700 border-gray-600 text-purple-500 focus:ring-purple-600 focus:ring-2 cursor-pointer"
                         aria-label={`Select ${song.name}`}
+                        disabled={!!downloadStatus} // Disable checkbox during download
                     />
                 </div>
             )}
@@ -94,10 +98,16 @@ export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = 
 
                 <div className={`flex items-center mt-3 w-full ${isLarge ? 'justify-center' : 'justify-between'}`}>
                     <span className="text-gray-500 text-sm">{formatDuration(song.duration_ms)}</span>
-                    <button onClick={() => onDownload(song)} className={`flex items-center justify-center bg-gray-700 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-full transition-all duration-300 ease-in-out text-sm ${isLarge ? 'ml-4' : ''}`}>
-                        <DownloadIcon />
-                        Download
-                    </button>
+                    {!downloadStatus ? (
+                        <button onClick={() => onDownload(song)} className={`flex items-center justify-center bg-gray-700 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-full transition-all duration-300 ease-in-out text-sm ${isLarge ? 'ml-4' : ''}`}>
+                            <DownloadIcon />
+                            Download
+                        </button>
+                    ) : (
+                         <div className="w-1/2 ml-4">
+                             <ProgressBar status={downloadStatus} />
+                         </div>
+                    )}
                 </div>
             </div>
         </div>

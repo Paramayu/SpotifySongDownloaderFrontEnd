@@ -1,8 +1,9 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { io, Socket } from 'socket.io-client';
 // Import custom types to ensure data consistency throughout the app.
-import type { SpotifyAPIResponse, SpotifySong } from './types';
+import type { SpotifyAPIResponse, SpotifySong, DownloadStatus } from './types';
 // Import service functions that handle external API calls.
-import { fetchSpotifyData, initiatePlaylistDownload } from './services/apiService';
+import { fetchSpotifyData, initiatePlaylistDownload, API_DOMAIN } from './services/apiService';
 
 // Import UI components.
 import { UrlInputForm } from './components/UrlInputForm';
@@ -21,29 +22,21 @@ type View = 'search' | 'results' | 'single_download';
 const App: React.FC = () => {
     // STATE MANAGEMENT //
 
-    // Holds the data fetched from the Spotify API (either a single song or a playlist).
     const [spotifyData, setSpotifyData] = useState<SpotifyAPIResponse | null>(null);
-    // Tracks whether the app is currently fetching data from the API.
     const [isLoading, setIsLoading] = useState<boolean>(false);
-    // Stores any error messages to display to the user.
     const [error, setError] = useState<string | null>(null);
-    // Determines which view is currently visible to the user.
     const [view, setView] = useState<View>('search');
-    // Stores the specific song selected for a single download.
     const [songForDownload, setSongForDownload] = useState<SpotifySong | null>(null);
-
-    // State specifically for playlist downloads.
-    // Tracks whether a playlist download is currently in progress.
     const [isDownloadingPlaylist, setIsDownloadingPlaylist] = useState<boolean>(false);
-    // Stores the final download link for the playlist ZIP file.
     const [playlistDownloadLink, setPlaylistDownloadLink] = useState<string | null>(null);
-    // A set of song IDs that the user has selected for download. Using a Set is efficient for checking if a song is selected.
     const [selectedSongs, setSelectedSongs] = useState<Set<string>>(new Set());
 
-    /**
-     * Resets all state variables to their initial values. This is used before starting a new search
-     * to clear out data from the previous one.
-     */
+    // New state for real-time download progress and socket connection.
+    const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadStatus>>(new Map());
+    const socketRef = useRef<Socket | null>(null);
+    const songsInQueueRef = useRef<SpotifySong[]>([]);
+
+
     const resetAllState = () => {
         setError(null);
         setSpotifyData(null);
@@ -51,114 +44,143 @@ const App: React.FC = () => {
         setIsDownloadingPlaylist(false);
         setPlaylistDownloadLink(null);
         setSelectedSongs(new Set());
+        setDownloadProgress(new Map());
+        if (socketRef.current) {
+            socketRef.current.disconnect();
+            socketRef.current = null;
+        }
+        songsInQueueRef.current = [];
     };
 
-    /**
-     * Handles the search action when the user submits a Spotify URL.
-     * `useCallback` is a React Hook that memoizes the function, preventing it from being recreated
-     * on every render, which can improve performance.
-     */
     const handleSearch = useCallback(async (url: string) => {
         if (!url) {
             setError('Please enter a Spotify URL.');
             return;
         }
         setIsLoading(true);
-        resetAllState(); // Clear previous results.
+        resetAllState();
 
         try {
-            // Using the new apiService function to fetch data from the backend.
             const data = await fetchSpotifyData(url);
             if (data.playlist) {
-                // If a playlist is loaded, select all songs by default for user convenience.
                 const allSongIds = new Set(data.playlist.tracks.map(t => t.id));
                 setSelectedSongs(allSongIds);
             }
             setSpotifyData(data);
-            setView('results'); // Switch to the results view.
+            setView('results');
         } catch (err) {
-            // Handle any errors that occur during the API fetch.
             setError(err instanceof Error ? err.message : 'An unknown error occurred.');
             setSpotifyData(null);
-            setView('search'); // Go back to the search view on error.
+            setView('search');
         } finally {
-            // This block runs whether the try block succeeded or failed.
-            setIsLoading(false); // Stop the loading indicator.
+            setIsLoading(false);
         }
     }, []);
 
-    /**
-     * Sets the selected song and switches to the single download view.
-     * @param song The song object to be downloaded.
-     */
     const handleDownloadSong = (song: SpotifySong) => {
         console.log(`Initiating download for song ID: ${song.id}`);
         setSongForDownload(song);
         setView('single_download');
     };
 
-    /**
-     * Initiates the download process for all selected songs in a playlist.
-     */
     const handleDownloadSelected = async () => {
-        if (!spotifyData?.playlist || selectedSongs.size === 0) return;
-        
+        if (!spotifyData?.playlist || selectedSongs.size === 0 || isDownloadingPlaylist) return;
+
         setIsDownloadingPlaylist(true);
         setPlaylistDownloadLink(null);
         setError(null);
+        setDownloadProgress(new Map());
 
-        try {
-            // Filter the full track list to get only the songs the user has selected.
-            const songsToDownload = spotifyData.playlist.tracks.filter(track => selectedSongs.has(track.id));
+        const songsToDownload = spotifyData.playlist.tracks.filter(track => selectedSongs.has(track.id));
+        songsInQueueRef.current = songsToDownload;
+
+        const socket = io(API_DOMAIN);
+        socketRef.current = socket;
+
+        socket.on('connect', () => {
+            console.log('Socket connected with ID:', socket.id);
+            initiatePlaylistDownload(songsToDownload, socket.id)
+                .then(data => {
+                    setPlaylistDownloadLink(data.link);
+                })
+                .catch(err => {
+                    setError(err instanceof Error ? err.message : 'The download failed. Please try again.');
+                    setIsDownloadingPlaylist(false);
+                });
+        });
+
+        socket.on('downloadSequenceStarted', () => {
+            console.log('Backend has started the download sequence.');
+            if (songsInQueueRef.current.length > 0) {
+                setDownloadProgress(prev => {
+                    const newProgress = new Map(prev);
+                    newProgress.set(songsInQueueRef.current[0].id, 'downloading');
+                    return newProgress;
+                });
+            }
+        });
+
+        socket.on('progress', (data: { totalDownloaded: number }) => {
+            const { totalDownloaded } = data;
+            const queue = songsInQueueRef.current;
             
-            // Call the API service to start the download process. This is now a single, long-running request.
-            const data = await initiatePlaylistDownload(songsToDownload);
-            
-            // Once complete, set the final download link.
-            setPlaylistDownloadLink(data.link);
-        } catch (err) {
-            setError(err instanceof Error ? err.message : 'The download failed. Please try again.');
-        } finally {
+            setDownloadProgress(prev => {
+                const newProgress = new Map(prev);
+                if (totalDownloaded > 0 && queue[totalDownloaded - 1]) {
+                    newProgress.set(queue[totalDownloaded - 1].id, 'done');
+                }
+                if (totalDownloaded < queue.length && queue[totalDownloaded]) {
+                    newProgress.set(queue[totalDownloaded].id, 'downloading');
+                }
+                return newProgress;
+            });
+        });
+
+        socket.on('downloadSequenceCompleted', () => {
+            console.log('Backend has completed the download sequence.');
             setIsDownloadingPlaylist(false);
-        }
+            socket.disconnect();
+            socketRef.current = null;
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('Socket disconnected.');
+        });
     };
+    
+    // Cleanup socket connection on component unmount
+    useEffect(() => {
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.disconnect();
+            }
+        };
+    }, []);
 
-    /**
-     * Toggles the selection state of a single song.
-     * @param songId The ID of the song to select or deselect.
-     */
+
     const handleSongSelectionToggle = (songId: string) => {
         setSelectedSongs(prev => {
             const newSelection = new Set(prev);
             if (newSelection.has(songId)) {
-                newSelection.delete(songId); // If already selected, deselect it.
+                newSelection.delete(songId);
             } else {
-                newSelection.add(songId); // If not selected, select it.
+                newSelection.add(songId);
             }
             return newSelection;
         });
     };
 
-    /**
-     * Toggles the selection of all songs in the playlist.
-     */
     const handleSelectAllToggle = () => {
         if (spotifyData?.playlist) {
             if (selectedSongs.size === spotifyData.playlist.tracks.length) {
-                // If all songs are already selected, deselect all.
                 setSelectedSongs(new Set());
             } else {
-                // Otherwise, select all songs.
                 const allSongIds = new Set(spotifyData.playlist.tracks.map(t => t.id));
                 setSelectedSongs(allSongIds);
             }
         }
     };
 
-    /**
-     * Determines which content to render based on the current state (e.g., loading, error, view).
-     * This acts like a simple router for the app's content area.
-     */
     const renderContent = () => {
         if (isLoading) {
             return <Loader />;
@@ -172,7 +194,7 @@ const App: React.FC = () => {
             return (
                 <SingleDownloadView
                     song={songForDownload}
-                    onComplete={() => setView('results')} // Go back to results when done.
+                    onComplete={() => setView('results')}
                 />
             );
         }
@@ -197,12 +219,12 @@ const App: React.FC = () => {
                         selectedSongs={selectedSongs}
                         onSongSelect={handleSongSelectionToggle}
                         onSelectAll={handleSelectAllToggle}
+                        downloadProgress={downloadProgress}
                     />
                 </div>
             );
         }
         
-        // Default view when the app first loads or after a search is cleared.
         return (
              <div className="text-center mt-16 text-gray-400">
                 <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-16 w-16 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
@@ -214,10 +236,8 @@ const App: React.FC = () => {
         );
     };
 
-    // The main JSX structure of the app.
     return (
         <div className="min-h-screen bg-[#0A0A10] text-white font-sans">
-            {/* This div creates a decorative background effect. */}
             <div 
               className="absolute top-0 left-0 w-full h-full" 
               style={{
@@ -236,7 +256,6 @@ const App: React.FC = () => {
 
                 <UrlInputForm onSubmit={handleSearch} isLoading={isLoading} />
                 
-                {/* Render the main content area based on the current state. */}
                 {renderContent()}
 
             </main>

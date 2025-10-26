@@ -2,6 +2,11 @@
 // Using TypeScript interfaces helps prevent bugs by ensuring we use the data correctly.
 
 /**
+ * Represents the possible states for a song's download progress.
+ */
+export type DownloadStatus = 'downloading' | 'done';
+
+/**
  * Represents an image object from Spotify, typically for album art or artist photos.
  */
 export interface SpotifyImage {

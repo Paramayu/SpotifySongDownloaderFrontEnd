@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { SpotifyPlaylist, SpotifySong } from '../types';
+import type { SpotifyPlaylist, SpotifySong, DownloadStatus } from '../types';
 import { SongCard } from './SongCard';
 
 /**
@@ -22,6 +22,8 @@ interface PlaylistDisplayProps {
     onSongSelect: (songId: string) => void;
     /** Function to call when the "Select All" checkbox is toggled. */
     onSelectAll: () => void;
+    /** A Map tracking the download status of individual songs. */
+    downloadProgress: Map<string, DownloadStatus>;
 }
 
 // Constant to control how many songs are shown per "page".
@@ -42,7 +44,7 @@ const LinkIcon: React.FC = () => (
 /**
  * A component that displays the details of a playlist and a list of its tracks.
  */
-export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDownloadSong, onDownloadSelected, isDownloading, downloadLink, selectedSongs, onSongSelect, onSelectAll }) => {
+export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDownloadSong, onDownloadSelected, isDownloading, downloadLink, selectedSongs, onSongSelect, onSelectAll, downloadProgress }) => {
     const imageUrl = playlist.images.find(i => i.width >= 300)?.url || playlist.images[0]?.url;
     
     // State to manage how many songs are currently visible, for "Load More" functionality.
@@ -88,6 +90,7 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                         className="h-6 w-6 rounded bg-gray-700 border-gray-600 text-purple-500 focus:ring-purple-600 focus:ring-2 mr-3"
                         checked={allSelected}
                         onChange={onSelectAll}
+                        disabled={isDownloading}
                     />
                     <span className="font-semibold">Select All</span>
                 </label>
@@ -100,10 +103,10 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                         key={track.id} 
                         song={track} 
                         onDownload={onDownloadSong}
-                        // Individual download progress is no longer tracked for playlist downloads.
                         isSelectable={true}
                         isSelected={selectedSongs.has(track.id)}
                         onSelect={onSongSelect}
+                        downloadStatus={downloadProgress.get(track.id)}
                      />
                 ))}
             </div>
@@ -135,15 +138,18 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                     </button>
                  ) : (
                     // If a download link is available, show a link to it.
-                    <a 
-                        href={downloadLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center text-lg bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg"
-                    >
-                        <LinkIcon />
-                        Go to Downloads
-                    </a>
+                    <div className="text-center">
+                        <a 
+                            href={downloadLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center justify-center text-lg bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg"
+                        >
+                            <LinkIcon />
+                            Go to Downloads
+                        </a>
+                        <p className="text-xs text-gray-500 mt-2">Link is valid for 1 hour.</p>
+                    </div>
                  )}
             </div>
         </div>

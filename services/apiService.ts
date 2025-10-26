@@ -6,7 +6,7 @@ import type { SpotifyAPIResponse, SpotifySong } from '../types';
  */
 
 // The base URL for the backend API.
-const API_DOMAIN = 'http://localhost:3000';
+export const API_DOMAIN = 'http://localhost:3000';
 
 /**
  * Extracts the ID from a Spotify track or playlist URL.
@@ -77,10 +77,11 @@ interface DownloadRequestBody {
 /**
  * Initiates a download for a single song by calling the backend API.
  * @param song The song object to download.
+ * @param socketId The client's socket ID for real-time progress updates.
  * @returns A Promise that resolves with an object containing the download link.
  */
-export const initiateSingleSongDownload = async (song: SpotifySong): Promise<{ link: string }> => {
-    console.log(`Requesting download for single song: ${song.name}`);
+export const initiateSingleSongDownload = async (song: SpotifySong, socketId: string): Promise<{ link: string }> => {
+    console.log(`Requesting download for single song: ${song.name} with socketId: ${socketId}`);
     
     const requestBody: DownloadRequestBody = {
         tracks: [
@@ -92,7 +93,7 @@ export const initiateSingleSongDownload = async (song: SpotifySong): Promise<{ l
         ]
     };
 
-    const response = await fetch(`${API_DOMAIN}/api/download`, {
+    const response = await fetch(`${API_DOMAIN}/api/download?socketId=${socketId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -111,13 +112,12 @@ export const initiateSingleSongDownload = async (song: SpotifySong): Promise<{ l
 
 /**
  * Initiates the download process for a playlist of songs by calling the backend API.
- * This function sends all selected tracks at once and waits for a single response
- * with a link to the bundled download (e.g., a ZIP file).
  * @param songsToDownload An array of song objects to be "downloaded".
+ * @param socketId The client's socket ID for real-time progress updates.
  * @returns A Promise that resolves with an object containing the final download link.
  */
-export const initiatePlaylistDownload = async (songsToDownload: SpotifySong[]): Promise<{ link:string }> => {
-    console.log(`Requesting download for ${songsToDownload.length} selected songs.`);
+export const initiatePlaylistDownload = async (songsToDownload: SpotifySong[], socketId: string): Promise<{ link:string }> => {
+    console.log(`Requesting download for ${songsToDownload.length} selected songs with socketId: ${socketId}`);
 
     const requestBody: DownloadRequestBody = {
         tracks: songsToDownload.map(song => ({
@@ -126,12 +126,7 @@ export const initiatePlaylistDownload = async (songsToDownload: SpotifySong[]): 
         }))
     };
     
-    // Note: This request could take a long time on the server, especially for large playlists.
-    // The server needs to be configured to handle long-running requests without timing out.
-    // A more advanced solution for production might involve websockets or a polling mechanism
-    // to check the status of the download job, but for this implementation, we use a single,
-    // long-lived HTTP request as it's simpler to implement on the frontend.
-    const response = await fetch(`${API_DOMAIN}/api/download`, {
+    const response = await fetch(`${API_DOMAIN}/api/download?socketId=${socketId}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

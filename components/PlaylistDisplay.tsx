@@ -63,6 +63,9 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
     // Create a slice of the tracks array to only render the visible songs.
     const tracksToShow = playlist.tracks.slice(0, visibleCount);
     
+    const completedDownloads = Array.from(downloadProgress.values()).filter(status => status === 'done').length;
+    const totalToDownload = selectedSongs.size;
+
     return (
         <div className="space-y-8">
             {/* Playlist Header Section */}
@@ -133,8 +136,7 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                         className="flex items-center justify-center text-lg bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <DownloadAllIcon/>
-                        {/* The button text changes based on whether a download is in progress. */}
-                        {isDownloading ? `Downloading (${selectedSongs.size})...` : `Download Selected (${selectedSongs.size})`}
+                        {isDownloading ? `Downloading (${completedDownloads}/${totalToDownload})...` : `Download Selected (${totalToDownload})`}
                     </button>
                  ) : (
                     // If a download link is available, show a link to it.

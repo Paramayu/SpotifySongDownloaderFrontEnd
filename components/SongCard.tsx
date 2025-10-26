@@ -61,55 +61,61 @@ export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = 
         : "w-24 h-24 md:w-28 md:h-28";
 
     return (
-        <div className={`flex ${cardClasses} bg-gray-900/50 backdrop-blur-sm border rounded-lg p-4 shadow-lg transition-all duration-300 hover:border-gray-700 ${isSelected ? 'border-purple-500' : 'border-gray-800/80'}`}>
-            {/* Show a checkbox only if the card is selectable and not the large version. */}
-            {isSelectable && !isLarge && (
-                <div className="flex-shrink-0 pr-4">
-                    <input
-                        type="checkbox"
-                        checked={isSelected}
-                        onChange={() => onSelect?.(song.id)}
-                        className="h-6 w-6 rounded bg-gray-700 border-gray-600 text-purple-500 focus:ring-purple-600 focus:ring-2 cursor-pointer"
-                        aria-label={`Select ${song.name}`}
-                        disabled={!!downloadStatus} // Disable checkbox during download
-                    />
-                </div>
-            )}
-            
-            <img src={imageUrl} alt={song.name} className={`${imageClasses} object-cover rounded-md flex-shrink-0 shadow-md`} />
-
-            <div className={`flex flex-col justify-between ${isLarge ? 'items-center' : 'ml-4'} flex-grow`}>
-                <div>
-                    <a href={song.url} target="_blank" rel="noopener noreferrer" className={`font-bold ${isLarge ? 'text-2xl' : 'text-lg'} text-white hover:text-cyan-400 transition-colors duration-200 line-clamp-2`}>
-                        {song.name}
-                    </a>
-                    {/* Display the list of artists, separated by commas. */}
-                    <div className={`text-gray-400 text-sm mt-1 ${isLarge ? 'justify-center' : ''} flex flex-wrap`}>
-                        {song.artists.map((artist, index) => (
-                            <React.Fragment key={artist.url}>
-                                <a href={artist.url} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors duration-200">
-                                    {artist.name}
-                                </a>
-                                {index < song.artists.length - 1 && <span className="mx-1">,</span>}
-                            </React.Fragment>
-                        ))}
+        <div className={`relative overflow-hidden bg-gray-900/50 backdrop-blur-sm border rounded-lg shadow-lg transition-all duration-300 hover:border-gray-700 ${isSelected ? 'border-purple-500' : 'border-gray-800/80'}`}>
+            <div className={`flex ${cardClasses} p-4`}>
+                {/* Show a checkbox only if the card is selectable and not the large version. */}
+                {isSelectable && !isLarge && (
+                    <div className="flex-shrink-0 pr-4">
+                        <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onSelect?.(song.id)}
+                            className="h-6 w-6 rounded bg-gray-700 border-gray-600 text-purple-500 focus:ring-purple-600 focus:ring-2 cursor-pointer"
+                            aria-label={`Select ${song.name}`}
+                            disabled={!!downloadStatus} // Disable checkbox during download
+                        />
                     </div>
-                </div>
+                )}
+                
+                <img src={imageUrl} alt={song.name} className={`${imageClasses} object-cover rounded-md flex-shrink-0 shadow-md`} />
 
-                <div className={`flex items-center mt-3 w-full ${isLarge ? 'justify-center' : 'justify-between'}`}>
-                    <span className="text-gray-500 text-sm">{formatDuration(song.duration_ms)}</span>
-                    {!downloadStatus ? (
-                        <button onClick={() => onDownload(song)} className={`flex items-center justify-center bg-gray-700 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-full transition-all duration-300 ease-in-out text-sm ${isLarge ? 'ml-4' : ''}`}>
+                <div className={`flex flex-col justify-between ${isLarge ? 'items-center' : 'ml-4'} flex-grow`}>
+                    <div>
+                        <a href={song.url} target="_blank" rel="noopener noreferrer" className={`font-bold ${isLarge ? 'text-2xl' : 'text-lg'} text-white hover:text-cyan-400 transition-colors duration-200 line-clamp-2`}>
+                            {song.name}
+                        </a>
+                        {/* Display the list of artists, separated by commas. */}
+                        <div className={`text-gray-400 text-sm mt-1 ${isLarge ? 'justify-center' : ''} flex flex-wrap`}>
+                            {song.artists.map((artist, index) => (
+                                <React.Fragment key={artist.url}>
+                                    <a href={artist.url} target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors duration-200">
+                                        {artist.name}
+                                    </a>
+                                    {index < song.artists.length - 1 && <span className="mx-1">,</span>}
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className={`flex items-center mt-3 w-full ${isLarge ? 'justify-center' : 'justify-between'}`}>
+                        <span className="text-gray-500 text-sm">{formatDuration(song.duration_ms)}</span>
+                        <button 
+                            onClick={() => onDownload(song)} 
+                            className={`flex items-center justify-center bg-gray-700 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-full transition-all duration-300 ease-in-out text-sm disabled:opacity-50 disabled:cursor-not-allowed ${isLarge ? 'ml-4' : ''}`}
+                            disabled={!!downloadStatus}
+                        >
                             <DownloadIcon />
                             Download
                         </button>
-                    ) : (
-                         <div className="w-1/2 ml-4">
-                             <ProgressBar status={downloadStatus} />
-                         </div>
-                    )}
+                    </div>
                 </div>
             </div>
+            
+            {downloadStatus && (
+                <div className="absolute bottom-0 left-0 w-full">
+                    <ProgressBar status={downloadStatus} />
+                </div>
+            )}
         </div>
     );
 };

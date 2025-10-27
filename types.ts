@@ -4,7 +4,7 @@
 /**
  * Represents the possible states for a song's download progress.
  */
-export type DownloadStatus = 'downloading' | 'done';
+export type DownloadStatus = 'pending' | 'downloading' | 'done' | 'failed';
 
 /**
  * Represents an image object from Spotify, typically for album art or artist photos.

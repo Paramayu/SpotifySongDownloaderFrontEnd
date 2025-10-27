@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 // Import custom types to ensure data consistency throughout the app.
@@ -30,11 +31,15 @@ const App: React.FC = () => {
     const [isDownloadingPlaylist, setIsDownloadingPlaylist] = useState<boolean>(false);
     const [playlistDownloadLink, setPlaylistDownloadLink] = useState<string | null>(null);
     const [selectedSongs, setSelectedSongs] = useState<Set<string>>(new Set());
-
+    
     // New state for real-time download progress and socket connection.
     const [downloadProgress, setDownloadProgress] = useState<Map<string, DownloadStatus>>(new Map());
     const socketRef = useRef<Socket | null>(null);
     const songsInQueueRef = useRef<SpotifySong[]>([]);
+    
+    // State for download summary
+    const [downloadSummary, setDownloadSummary] = useState<string | null>(null);
+    const [failedSongsList, setFailedSongsList] = useState<Array<{ name: string; artist: string; }>>([]);
 
 
     const resetAllState = () => {
@@ -45,6 +50,8 @@ const App: React.FC = () => {
         setPlaylistDownloadLink(null);
         setSelectedSongs(new Set());
         setDownloadProgress(new Map());
+        setDownloadSummary(null);
+        setFailedSongsList([]);
         if (socketRef.current) {
             socketRef.current.disconnect();
             socketRef.current = null;
@@ -89,10 +96,15 @@ const App: React.FC = () => {
         setIsDownloadingPlaylist(true);
         setPlaylistDownloadLink(null);
         setError(null);
-        setDownloadProgress(new Map());
+        setDownloadSummary(null);
+        setFailedSongsList([]);
 
         const songsToDownload = spotifyData.playlist.tracks.filter(track => selectedSongs.has(track.id));
         songsInQueueRef.current = songsToDownload;
+        
+        const initialProgress = new Map<string, DownloadStatus>();
+        songsToDownload.forEach(song => initialProgress.set(song.id, 'pending'));
+        setDownloadProgress(initialProgress);
 
         const socket = io(API_DOMAIN);
         socketRef.current = socket;
@@ -104,13 +116,14 @@ const App: React.FC = () => {
                     setPlaylistDownloadLink(data.link);
                 })
                 .catch(err => {
-                    setError(err instanceof Error ? err.message : 'The download failed. Please try again.');
+                    setError(err instanceof Error ? err.message : 'The download failed to start. Please try again.');
                     setIsDownloadingPlaylist(false);
+                    socket.disconnect();
                 });
         });
 
-        socket.on('downloadSequenceStarted', () => {
-            console.log('Backend has started the download sequence.');
+        socket.on('downloadSequenceStarted', (data: { sessionId: string; totalSongs: number }) => {
+            console.log('Backend has started the download sequence.', data);
             if (songsInQueueRef.current.length > 0) {
                 setDownloadProgress(prev => {
                     const newProgress = new Map(prev);
@@ -120,29 +133,102 @@ const App: React.FC = () => {
             }
         });
 
-        socket.on('progress', (data: { totalDownloaded: number }) => {
-            const { totalDownloaded } = data;
+        socket.on('progress', (data: { current: number; total: number; songName: string; artist: string; percentage: number }) => {
+            const { current } = data;
             const queue = songsInQueueRef.current;
             
             setDownloadProgress(prev => {
                 const newProgress = new Map(prev);
-                if (totalDownloaded > 0 && queue[totalDownloaded - 1]) {
-                    newProgress.set(queue[totalDownloaded - 1].id, 'done');
+                if (current > 0 && queue[current - 1]) {
+                    // Only mark as done if it hasn't failed
+                    if (newProgress.get(queue[current-1].id) !== 'failed') {
+                        newProgress.set(queue[current - 1].id, 'done');
+                    }
                 }
-                if (totalDownloaded < queue.length && queue[totalDownloaded]) {
-                    newProgress.set(queue[totalDownloaded].id, 'downloading');
+                if (current < queue.length && queue[current]) {
+                    newProgress.set(queue[current].id, 'downloading');
                 }
                 return newProgress;
             });
         });
 
-        socket.on('downloadSequenceCompleted', () => {
-            console.log('Backend has completed the download sequence.');
+        socket.on('songFailed', (data: { song: string; artist: string; stage: string; error: string }) => {
+            console.warn('A song failed to download:', data);
+            const queue = songsInQueueRef.current;
+            
+            // Find the currently 'downloading' song, as that's the one that failed.
+            let failedSongId: string | undefined;
+            // This is a workaround as state updates are async. We read the latest state via the function form of setState.
+            setDownloadProgress(prev => {
+                const newProgress = new Map(prev);
+                for(const [id, status] of newProgress.entries()) {
+                    if (status === 'downloading') {
+                        failedSongId = id;
+                        break;
+                    }
+                }
+
+                if (failedSongId) {
+                    newProgress.set(failedSongId, 'failed');
+                } else {
+                     // Fallback for race conditions: match by name/artist
+                    const failedSong = queue.find(s => s.name === data.song && s.artists.some(a => a.name === data.artist));
+                    if (failedSong) {
+                        newProgress.set(failedSong.id, 'failed');
+                    }
+                }
+                return newProgress;
+            });
+        });
+
+        socket.on('downloadSequenceCompleted', (data: { totalSongs: number; successful: number; failed: number; failedSongs?: any[] }) => {
+            console.log('Backend has completed the download sequence.', data);
             setIsDownloadingPlaylist(false);
+            setDownloadSummary(`Download complete. ${data.successful}/${data.totalSongs} successful.`);
+            if (data.failedSongs) {
+                setFailedSongsList(data.failedSongs);
+            }
             socket.disconnect();
             socketRef.current = null;
         });
         
+        socket.on('criticalError', (data: { message: string; sessionId: string }) => {
+            console.error('Critical error from server:', data);
+            setError(`A critical error occurred: ${data.message}. Download has been stopped.`);
+            setIsDownloadingPlaylist(false);
+            setDownloadProgress(prev => {
+                const newProgress = new Map(prev);
+                for (const [id, status] of newProgress.entries()) {
+                    if (status === 'downloading' || status === 'pending') {
+                        newProgress.set(id, 'failed');
+                    }
+                }
+                return newProgress;
+            });
+            socket.disconnect();
+            socketRef.current = null;
+        });
+
+        // FIX: Handle unknown error type from socket event.
+        socket.on('error', (data: unknown) => {
+            console.error('Socket error:', data);
+            let message = 'A server error occurred';
+            if (data instanceof Error) {
+                message = `A server error occurred: ${data.message}`;
+            } else if (data && typeof (data as any).message === 'string') {
+                message = `A server error occurred: ${(data as any).message}`;
+                if ((data as any).code) {
+                    message += ` (Code: ${(data as any).code})`;
+                }
+            } else if (typeof data === 'string') {
+                message = `A server error occurred: ${data}`;
+            }
+            setError(message);
+            setIsDownloadingPlaylist(false);
+            if (socket.connected) socket.disconnect();
+            socketRef.current = null;
+        });
+
         socket.on('disconnect', () => {
             console.log('Socket disconnected.');
         });
@@ -186,7 +272,10 @@ const App: React.FC = () => {
             return <Loader />;
         }
 
-        if (error) {
+        if (error && view === 'results') {
+            return <p className="text-red-400 text-center mt-8 text-lg">{error}</p>;
+        }
+         if (error && view !== 'results') {
             return <p className="text-red-400 text-center mt-8 text-lg">{error}</p>;
         }
 
@@ -194,7 +283,11 @@ const App: React.FC = () => {
             return (
                 <SingleDownloadView
                     song={songForDownload}
-                    onComplete={() => setView('results')}
+                    onComplete={() => {
+                        // Reset single-download-specific state if needed
+                        setError(null);
+                        setView('results');
+                    }}
                 />
             );
         }
@@ -220,6 +313,8 @@ const App: React.FC = () => {
                         onSongSelect={handleSongSelectionToggle}
                         onSelectAll={handleSelectAllToggle}
                         downloadProgress={downloadProgress}
+                        downloadSummary={downloadSummary}
+                        failedSongs={failedSongsList}
                     />
                 </div>
             );
@@ -246,7 +341,7 @@ const App: React.FC = () => {
             ></div>
             <main className="container mx-auto px-4 py-8 md:py-12 relative z-10">
                 <header className="text-center mb-8">
-                    <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400">
+                    <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-cyan-400 pb-2">
                         EchoSnag
                     </h1>
                     <p className="mt-2 text-lg text-gray-400">

@@ -1,11 +1,13 @@
 import React from 'react';
+import type { DownloadStatus } from '../types';
+
 
 /**
  * Props for the ProgressBar component.
  */
 interface ProgressBarProps {
     /** The current status of the download to determine which style of bar to show. */
-    status: 'downloading' | 'done';
+    status: 'downloading' | 'done' | 'failed';
 }
 
 /**
@@ -24,9 +26,17 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ status }) => {
     // If the status is 'done', show a full, green progress bar.
     if (status === 'done') {
         return (
-             <div className="w-full bg-green-500 rounded-full h-2.5"></div>
+             <div className="w-full bg-green-500 h-2.5"></div>
         );
     }
+    
+    // If the status is 'failed', show a full, red progress bar.
+    if (status === 'failed') {
+        return (
+             <div className="w-full bg-red-600 h-2.5"></div>
+        );
+    }
+
 
     // If the status is neither, render nothing.
     return null;

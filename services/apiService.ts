@@ -55,9 +55,9 @@ export const fetchSpotifyData = async (url: string): Promise<SpotifyAPIResponse>
     const response = await fetch(fullUrl);
 
     if (!response.ok) {
-        const errorBody = await response.text();
+        const errorBody = await response.json().catch(() => ({ error: 'Failed to parse error response' }));
         console.error('API Error Response:', errorBody);
-        throw new Error(`Failed to fetch data. Server responded with status: ${response.status}`);
+        throw new Error(errorBody.error || `Failed to fetch data. Server responded with status: ${response.status}`);
     }
 
     // The backend should return data in the SpotifyAPIResponse format.
@@ -101,13 +101,15 @@ export const initiateSingleSongDownload = async (song: SpotifySong, socketId: st
         body: JSON.stringify(requestBody),
     });
 
-    if (!response.ok) {
-        const errorBody = await response.text();
-        console.error('API Error Response:', errorBody);
-        throw new Error(`Download request failed. Server responded with status: ${response.status}`);
+    const data = await response.json();
+
+    if (!response.ok || data.success === false || !data.driveLink) {
+        const errorMessage = data.error || `Download request failed. Server responded with status: ${response.status}`;
+        console.error('API Error Response:', data);
+        throw new Error(errorMessage);
     }
 
-    return response.json();
+    return { link: data.driveLink };
 };
 
 /**
@@ -134,11 +136,13 @@ export const initiatePlaylistDownload = async (songsToDownload: SpotifySong[], s
         body: JSON.stringify(requestBody),
     });
 
-     if (!response.ok) {
-        const errorBody = await response.text();
-        console.error('API Error Response:', errorBody);
-        throw new Error(`Download request failed. Server responded with status: ${response.status}`);
+    const data = await response.json();
+
+    if (response.status !== 201 || data.success === false || !data.driveLink) {
+        const errorMessage = data.error || `Download request failed. Server responded with status: ${response.status}`;
+        console.error('API Error Response:', data);
+        throw new Error(errorMessage);
     }
 
-    return response.json();
+    return { link: data.driveLink };
 };

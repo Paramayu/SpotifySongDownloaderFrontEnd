@@ -62,6 +62,13 @@ export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = 
 
     return (
         <div className={`relative overflow-hidden bg-gray-900/50 backdrop-blur-sm border rounded-lg shadow-lg transition-all duration-300 hover:border-gray-700 ${isSelected ? 'border-purple-500' : 'border-gray-800/80'}`}>
+            {downloadStatus === 'failed' && (
+                <div className="absolute top-2 right-2 text-red-400" title="Download failed">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+            )}
             <div className={`flex ${cardClasses} p-4`}>
                 {/* Show a checkbox only if the card is selectable and not the large version. */}
                 {isSelectable && !isLarge && (
@@ -111,7 +118,7 @@ export const SongCard: React.FC<SongCardProps> = ({ song, onDownload, isLarge = 
                 </div>
             </div>
             
-            {downloadStatus && (
+            {downloadStatus && downloadStatus !== 'pending' && (
                 <div className="absolute bottom-0 left-0 w-full">
                     <ProgressBar status={downloadStatus} />
                 </div>

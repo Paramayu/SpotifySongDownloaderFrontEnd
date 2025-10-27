@@ -36,24 +36,43 @@ export const SingleDownloadView: React.FC<SingleDownloadViewProps> = ({ song, on
                     setDownloadLink(data.link);
                 })
                 .catch(err => {
-                    setError(err instanceof Error ? err.message : 'Download failed.');
+                    setError(err instanceof Error ? err.message : 'Download failed to start.');
                     setStatus('error');
+                    socket.disconnect();
                 });
         });
 
         socket.on('downloadSequenceStarted', () => {
             setStatus('downloading');
         });
-
-        socket.on('progress', (data: { totalDownloaded: number }) => {
-            if (data.totalDownloaded === 1) {
-                setStatus('done');
-            }
+        
+        socket.on('songFailed', (data: { error: string }) => {
+            setError(data.error || 'This song failed to download.');
+            setStatus('error');
         });
 
-        socket.on('downloadSequenceCompleted', () => {
+        socket.on('downloadSequenceCompleted', (data: { successful: number }) => {
+            if (data.successful === 1) {
+                setStatus('done');
+            } else {
+                setError(error || 'This song failed to download.');
+                setStatus('error');
+            }
              socket.disconnect();
         });
+        
+        socket.on('criticalError', (data: { message: string; }) => {
+            setError(`A critical error occurred: ${data.message}`);
+            setStatus('error');
+            socket.disconnect();
+        });
+
+        socket.on('error', (data: { message: string; }) => {
+            setError(`A server error occurred: ${data.message}`);
+            setStatus('error');
+            socket.disconnect();
+        });
+
 
         // Cleanup function
         return () => {
@@ -90,7 +109,7 @@ export const SingleDownloadView: React.FC<SingleDownloadViewProps> = ({ song, on
                 <p className="text-lg text-gray-300 mb-6">
                     {isComplete && 'Download Ready!'}
                     {(isPreparing || isDownloading) && 'Please wait, snagging your echo...'}
-                    {hasError && <span className="text-red-400">{error}</span>}
+                    {hasError && <span className="text-red-400">{error || 'An unknown error occurred.'}</span>}
                 </p>
 
                 {/* Action Buttons */}

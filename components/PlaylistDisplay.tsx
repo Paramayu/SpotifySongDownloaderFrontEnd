@@ -24,6 +24,10 @@ interface PlaylistDisplayProps {
     onSelectAll: () => void;
     /** A Map tracking the download status of individual songs. */
     downloadProgress: Map<string, DownloadStatus>;
+    /** A summary message to display after the download is complete. */
+    downloadSummary: string | null;
+    /** A list of songs that failed to download. */
+    failedSongs: Array<{ name: string; artist: string; }>;
 }
 
 // Constant to control how many songs are shown per "page".
@@ -44,7 +48,7 @@ const LinkIcon: React.FC = () => (
 /**
  * A component that displays the details of a playlist and a list of its tracks.
  */
-export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDownloadSong, onDownloadSelected, isDownloading, downloadLink, selectedSongs, onSongSelect, onSelectAll, downloadProgress }) => {
+export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDownloadSong, onDownloadSelected, isDownloading, downloadLink, selectedSongs, onSongSelect, onSelectAll, downloadProgress, downloadSummary, failedSongs }) => {
     const imageUrl = playlist.images.find(i => i.width >= 300)?.url || playlist.images[0]?.url;
     
     // State to manage how many songs are currently visible, for "Load More" functionality.
@@ -64,6 +68,8 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
     const tracksToShow = playlist.tracks.slice(0, visibleCount);
     
     const completedDownloads = Array.from(downloadProgress.values()).filter(status => status === 'done').length;
+    const failedDownloads = Array.from(downloadProgress.values()).filter(status => status === 'failed').length;
+    const totalProcessed = completedDownloads + failedDownloads;
     const totalToDownload = selectedSongs.size;
 
     return (
@@ -93,7 +99,7 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                         className="h-6 w-6 rounded bg-gray-700 border-gray-600 text-purple-500 focus:ring-purple-600 focus:ring-2 mr-3"
                         checked={allSelected}
                         onChange={onSelectAll}
-                        disabled={isDownloading}
+                        disabled={isDownloading || downloadProgress.size > 0}
                     />
                     <span className="font-semibold">Select All</span>
                 </label>
@@ -132,11 +138,11 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                     // If no download link is available, show the "Download Selected" button.
                     <button 
                         onClick={onDownloadSelected} 
-                        disabled={isDownloading || selectedSongs.size === 0}
+                        disabled={isDownloading || selectedSongs.size === 0 || downloadProgress.size > 0}
                         className="flex items-center justify-center text-lg bg-gradient-to-r from-purple-500 to-cyan-500 hover:from-purple-600 hover:to-cyan-600 text-white font-bold py-3 px-8 rounded-full transition-all duration-300 ease-in-out transform hover:scale-105 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <DownloadAllIcon/>
-                        {isDownloading ? `Downloading (${completedDownloads}/${totalToDownload})...` : `Download Selected (${totalToDownload})`}
+                        {isDownloading ? `Downloading (${totalProcessed}/${totalToDownload})...` : `Download Selected (${totalToDownload})`}
                     </button>
                  ) : (
                     // If a download link is available, show a link to it.
@@ -154,6 +160,21 @@ export const PlaylistDisplay: React.FC<PlaylistDisplayProps> = ({ playlist, onDo
                     </div>
                  )}
             </div>
+            {downloadSummary && (
+                <div className="text-center mt-6 p-4 bg-gray-900/50 border border-gray-800 rounded-lg max-w-2xl mx-auto">
+                    <p className="text-lg text-gray-200">{downloadSummary}</p>
+                    {failedSongs.length > 0 && (
+                        <div className="mt-3 text-left">
+                            <p className="font-semibold text-red-400 text-center">Failed songs:</p>
+                            <ul className="text-sm text-gray-400 list-disc list-inside max-h-32 overflow-y-auto mt-1">
+                                {failedSongs.map(song => (
+                                    <li key={`${song.name}-${song.artist}`}>{song.name} by {song.artist}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
